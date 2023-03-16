@@ -6,6 +6,8 @@ require('dotenv').config()
 const bodyParser = require('body-parser')
 const {Configuration, OpenAIApi} = require('openai')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const stripe = require("stripe")('sk_test_51MBZbQGWLIA8ie2kAX6UPPxPszSKgZsQhoFNaI0wjVy4wDvjh2gMxiX09bl0U5diQo8PRm8bu2wKduAGwU79hlZw00Lk8phNcz');
+
 
 app.use(cors())
 app.use(express.json())
@@ -25,6 +27,10 @@ async function run(){
         const topicCollecton = client.db('sciencePedia').collection('topics')
         const commentsCollecton = client.db('sciencePedia').collection('comments')
         const usersCollection = client.db("sciencePedia").collection("users")
+        const premiumCollection = client.db("sciencePedia").collection("premium")
+        const paymentsCollection = client.db("sciencePedia").collection("payment")
+        const questionsCollection = client.db("sciencePedia").collection("question")
+        const answersCollection = client.db("sciencePedia").collection("answer")
 
 
         //chatGPT get api
@@ -37,6 +43,42 @@ async function run(){
                 prompt: prompt
             })
             res.send(completion.data.choices[0].text)
+        })
+
+        // payment
+        app.post('/create-payment-intent',async(req,res)=>{
+            const booking= req.body
+            const price = booking.price
+            const amount = price * 100;
+            console.log(price,amount);
+            const paymentIntent = await stripe.paymentIntents.create({
+                currency: 'usd',
+                amount: amount,
+                "payment_method_types": [
+                    "card"
+                ],
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret
+            })
+            console.log(paymentIntent.client_secret);
+        } )
+
+        //payment info save
+
+        app.post('/payments',async(req, res)=>{
+            const payment = req.body
+            const result = await paymentsCollection.insertOne(payment)
+            const email = payment.email
+            const filter = {email: email}
+            const updateDoc = {
+                $set: {
+                    paid: true,
+                    status: payment.status
+                }
+            }
+            const updateResult = await usersCollection.updateOne(filter, updateDoc)
+            res.send(result)
         })
 
         app.get('/topic', async(req, res)=>{
@@ -69,6 +111,68 @@ async function run(){
             const result = await usersCollection.insertOne(data)
             res.send(result)
         })
+        //my comments
+        app.get('/mycomment', async(req,res)=> {
+            const email = req.query.email
+            const query = {email: email}
+            const result = await commentsCollecton.find(query).toArray()
+            res.send(result)
+        })
+        app.delete('/mycomment/:id', async(req,res)=>{
+            const id = req.params.id
+            const query ={_id:new ObjectId(id)}
+            const result = await commentsCollecton.deleteOne(query)
+            res.send(result)
+        })
+        //primium card
+        app.get('/premium',async(req,res)=>{
+            const query = {}
+            const result = await premiumCollection.find(query).toArray()
+            res.send(result)
+        })
+
+        //post question
+        app.post('/questions', async(req,res)=>{
+            const data = req.body
+            const result = await questionsCollection.insertOne(data)
+            res.send(result)
+        })
+        //get questions
+        app.get('/questions', async(req,res)=>{
+            const query ={}
+            const result = await questionsCollection.find(query).toArray()
+            res.send(result)
+        })
+        //post answer
+        app.post('/answers', async(req,res)=>{
+            const data = req.body
+            const result = await answersCollection.insertOne(data)
+            res.send(result)
+        })
+        //delete answer
+        app.delete('/answers/:id', async(req,res)=>{
+            const id = req.params.id;
+            const query = {_id: new ObjectId(id)}
+            const result = await answersCollection.deleteOne(query)
+            res.send(result)
+        })
+        //get answer
+        app.get('/answers/:id', async(req,res)=>{
+            const id=req.params.id
+            const query ={qId:id}
+            const result = await answersCollection.find(query).toArray()
+            res.send(result)
+        })
+        //delete questions
+        app.delete('/questions/:id', async(req,res)=>{
+            const id = req.params.id
+            const query ={_id:new ObjectId(id)}
+            const ansquery = {qId:id}
+            const result = await questionsCollection.deleteOne(query)
+            const ansresult = await answersCollection.deleteMany(ansquery)
+            res.send({result, ansresult})
+        })
+
     }
     finally{
 
