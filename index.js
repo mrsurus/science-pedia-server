@@ -206,6 +206,20 @@ async function run(){
             const ansresult = await answersCollection.deleteMany(ansquery)
             res.send({result, ansresult})
         })
+        //update like to the topic description
+        app.put('/topic/likes/:id', async(req,res)=> {
+            const id = req.params.id
+            const data = req.body;
+            const filter = {_id:new ObjectId(id)}
+            const option = {upsert: true}
+            const updateDoc = {
+                $set:{
+                    likes: data.counter
+                }
+            }
+            const result = await topicCollecton.updateOne(filter, updateDoc, option)
+            res.send(result)
+        })
 
     }
     finally{
